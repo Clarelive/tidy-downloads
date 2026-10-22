@@ -1,0 +1,23 @@
+# Example tidy-downloads config.
+# Copy this file to tidy-downloads.toml in the folder you tidy, or to
+# ~/.config/tidy-downloads/config.toml, then edit the lists.
+#
+# Extensions you list are moved into that category. Extensions you leave out
+# keep their built-in category. Set replace_categories = true to ignore the
+# built-in categories completely.
+#
+# Supported TOML is the subset documented in the README: strings, booleans,
+# arrays, tables, and comments.
+
+replace_categories = false
+
+# This list replaces the built-in partial-download extensions
+# (crdownload, part, tmp) when it is present.
+skip_extensions = ["crdownload", "part", "tmp", "download"]
+
+# Folder used when nothing else matches.
+others = "Others"
+
+[categories]
+Images = ["jpg", "jpeg", "png", "gif", "webp", "heic"]
+Ebooks = ["epub", "mobi", "azw3"]

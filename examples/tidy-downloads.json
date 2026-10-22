@@ -1,0 +1,9 @@
+{
+  "replace_categories": false,
+  "skip_extensions": ["crdownload", "part", "tmp", "download"],
+  "others": "Others",
+  "categories": {
+    "Images": ["jpg", "jpeg", "png", "gif", "webp", "heic"],
+    "Ebooks": ["epub", "mobi", "azw3"]
+  }
+}
