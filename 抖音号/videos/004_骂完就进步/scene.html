@@ -1,0 +1,229 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../engine/node_modules/@fontsource/noto-sans-sc/400.css">
+<link rel="stylesheet" href="../../engine/node_modules/@fontsource/noto-sans-sc/500.css">
+<link rel="stylesheet" href="../../engine/node_modules/@fontsource/noto-sans-sc/700.css">
+<link rel="stylesheet" href="../../engine/node_modules/@fontsource/noto-sans-sc/900.css">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// 004《骂完就进步，是骂有用吗？》竖屏 1080×1920，30 帧/秒。画面只由帧号决定：window.draw(frame)。
+// 安全区：重要的字放在 y 300–1430、x 60–940 之内（抖音下方有文案，右侧下半有一列按钮）。
+const W=1080,H=1920,FPS=30;
+const F='"Noto Sans SC"';
+const C={bg:'#0a0c13',dot:'#566079',red:'#ff5b4f',gold:'#ffc640',white:'#f4f1ea',sub:'#aab1c2',green:'#59d98e',luck:'#6fc3ff'};
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+let DATA=null,L1=null,L2=null,YOU=0,S=null;
+
+// ---------- 时间表（秒） ----------
+const T={hook:0,l2:1.0,bub:2.0,ask:3.6,pile:4.7,t1:7.6,red:7.9,you:8.6,gold:9.3,t2:10.5,c1:11.9,s1:12.7,c2:14.7,s2:15.5,
+         why:17.6,take:26.1,q:31.7,end:36.2};
+const DUR=T.end,FRAMES=Math.round(DUR*FPS);
+// “一个孩子的七次考试”：每个点、每个标签出现的时刻（相对 CH0）
+const CH0=T.why+.3, PT=[.3,.6,1.0,3.3,5.2,5.5,6.5], TAG={scold:1.5,works:3.8,praise:5.9,proud:6.9};
+const EX=[72,66,55,71,68,86,73],ABIL=70;
+window.SFX=[  // 给 sound.py 用：[秒, 名字]
+  [0,'thud'],[T.l2,'tick'],[T.bub,'dun'],[T.ask+.15,'q'],[T.pile,'rain'],[T.red,'mark'],[T.you,'you'],[T.gold,'mark2'],
+  [T.t2,'whoosh'],[T.c1,'count_up'],[T.s1,'soft'],[T.c2,'count_down'],[T.s2,'soft'],[T.why,'page'],
+  ...PT.map((p,k)=>[CH0+p,k===2?'plow':k===5?'phigh':'p']),...Object.values(TAG).map(p=>[CH0+p,'tag']),
+  [T.take+.3,'chord'],[T.take+2.0,'chord2'],[T.take+3.6,'soft'],[T.q+.2,'q2'],[T.q+1.2,'opt'],[T.q+1.6,'opt2']];
+
+// ---------- 小工具 ----------
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const seg=(t,a,b)=>clamp((t-a)/(b-a));
+const eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const eout=x=>1-Math.pow(1-x,3);
+const back=x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+const lerp=(a,b,x)=>a+(b-a)*x;
+function rnd(i){let x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)}
+function mix(c1,c2,x){const p=c=>[1,3,5].map(k=>parseInt(c.slice(k,k+2),16));const a=p(c1),b=p(c2);
+  return 'rgb('+a.map((v,k)=>Math.round(lerp(v,b[k],x))).join(',')+')'}
+function text(s,x,y,size,o={}){
+  const {w=700,color=C.white,a=1,align='center',stroke=0}=o; if(a<=0)return;
+  g.save();g.globalAlpha=a;g.font=`${w} ${size}px ${F}`;g.textAlign=align;g.textBaseline='middle';
+  if(stroke){g.lineJoin='round';g.lineWidth=stroke;g.strokeStyle='rgba(6,8,13,.92)';g.strokeText(s,x,y)}
+  g.fillStyle=color;g.fillText(s,x,y);g.restore()}
+// 一行里有几段不同颜色的字：parts=[[字,颜色],...]
+function rich(parts,x,y,size,o={}){
+  const {w=700,a=1,stroke=0}=o; if(a<=0)return; g.save();g.font=`${w} ${size}px ${F}`;
+  const ws=parts.map(p=>g.measureText(p[0]).width),tot=ws.reduce((s,v)=>s+v,0);g.restore();
+  let cx=x-tot/2; parts.forEach((p,i)=>{text(p[0],cx,y,size,{w,a,stroke,color:p[1]||C.white,align:'left'});cx+=ws[i]})}
+function pill(x,y,w,h,r,fill,a=1,strokeC=null){g.save();g.globalAlpha=a;g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,r);
+  if(fill){g.fillStyle=fill;g.fill()} if(strokeC){g.lineWidth=3;g.strokeStyle=strokeC;g.stroke()} g.restore()}
+function sub(s,a=1,y=1400,size=58){ text(s,W/2,y,size,{w:700,a,stroke:12}) }   // 字幕
+function subRich(parts,a=1,y=1400,size=58){ rich(parts,W/2,y,size,{w:700,a,stroke:12}) }
+function fade(t,a,b,din=.25,dout=.25){return Math.min(seg(t,a,a+din),1-seg(t,b-dout,b))}
+
+// ---------- 背景 ----------
+function bg(){
+  g.fillStyle=C.bg;g.fillRect(0,0,W,H);
+  let gr=g.createRadialGradient(W/2,-80,40,W/2,520,1250);
+  gr.addColorStop(0,'rgba(255,214,150,.20)');gr.addColorStop(.45,'rgba(120,110,140,.07)');gr.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=gr;g.fillRect(0,0,W,H);
+  gr=g.createLinearGradient(0,1400,0,H);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.55)');
+  g.fillStyle=gr;g.fillRect(0,1400,W,520);
+  pill(98,96,132,44,10,'rgba(255,255,255,.10)');text('AI 生成',98,97,24,{w:500,color:'rgba(255,255,255,.78)'});
+}
+
+// ---------- 一张卷子：白纸、几行题、右上角分数 ----------
+function paper(x,y,rot,score,ink,a,sc){ if(a<=0)return; g.save();g.globalAlpha=a;g.translate(x,y);g.rotate(rot);g.scale(sc,sc);
+  g.shadowColor='rgba(0,0,0,.5)';g.shadowBlur=40;g.shadowOffsetY=16;g.fillStyle='#f3efe6';g.beginPath();g.roundRect(-170,-225,340,450,14);g.fill();g.shadowColor='transparent';
+  g.fillStyle='#c9c3b6';for(let k=0;k<6;k++){g.beginPath();g.roundRect(-130,-40+k*40,k%3===2?170:260,12,6);g.fill()}
+  g.fillStyle='#8f897c';g.beginPath();g.roundRect(-130,-185,120,16,8);g.fill();
+  g.font=`900 120px ${F}`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=ink;g.fillText(score,62,-118);
+  g.strokeStyle=ink;g.lineWidth=7;g.lineCap='round';g.beginPath();g.moveTo(-8,-52);g.lineTo(132,-62);g.stroke();g.beginPath();g.moveTo(-2,-36);g.lineTo(126,-46);g.stroke();
+  g.restore()}
+function bubble(y,a,sc=1){ if(a<=0)return; g.save();g.translate(W/2,y);g.scale(sc,sc);
+  pill(0,0,760,140,30,C.red,a);text('“你看，骂了才有用。”',0,2,64,{w:900,color:'#190b0a',a});g.restore()}
+
+// ---------- 一千个点：按分数堆成一座小山 ----------
+const PITCH=13,R=5.2,X0=40,SMIN=32,BASE=1170;   // 每 1 分一列，从 32 分到 100 分
+const sx=s=>X0+(s-SMIN)*PITCH;
+function layout(scores){
+  const bins={};const pos=new Array(scores.length);
+  const idx=scores.map((s,i)=>i).sort((a,b)=>{
+    if(a===YOU)return -1; if(b===YOU)return 1; const ga=DATA.grp[a]?0:1,gb=DATA.grp[b]?0:1; return ga-gb||rnd(a)-rnd(b)});
+  for(const i of idx){const b=clamp(Math.floor(scores[i])-SMIN,0,68);const k=bins[b]=(bins[b]||0)+1;
+    pos[i]=[X0+b*PITCH+PITCH/2,BASE-(k-1)*PITCH-PITCH/2]}
+  return pos}
+function axis(a){ if(a<=0)return; g.save();g.globalAlpha=a;g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=2;
+  g.beginPath();g.moveTo(X0-6,BASE+10);g.lineTo(sx(101)+6,BASE+10);g.stroke();g.restore();
+  for(const s of [40,60,80,100]){text(String(s),sx(s)+PITCH/2,BASE+44,28,{w:500,color:C.sub,a:a*.9})}
+  text('← 分数低',X0+4,BASE+100,36,{w:700,color:C.sub,a,align:'left'});
+  text('分数高 →',sx(101)-4,BASE+100,36,{w:700,color:C.sub,a,align:'right'})}
+// m：0=第一次考试的位置，1=第二次；hl：{1:红的亮度,2:金的亮度}；drop：落下进度；alpha：整体；ghost：第一次的位置留个空圈
+function dots(m,hl,drop,alpha,youA,ghost){
+  if(alpha<=0)return; const n=DATA.t1.length; let yx=0,yy=0;
+  if(ghost>0){g.save();g.lineWidth=1.6;for(let i=0;i<n;i++){const gp=DATA.grp[i]; if(!gp)continue;
+    g.globalAlpha=alpha*ghost*.42;g.strokeStyle=gp===1?C.red:C.gold;g.beginPath();g.arc(L1[i][0],L1[i][1],R-.6,0,7);g.stroke()} g.restore()}
+  const dimRest=lerp(1,.5,Math.max(hl[1]||0,hl[2]||0));
+  for(let pass=0;pass<2;pass++) for(let i=0;i<n;i++){
+    const gp=DATA.grp[i],h=gp?(hl[gp]||0):0; if((h>0)!==(pass===1))continue;
+    const d=clamp((m-rnd(i+7)*.28)/.72), e=eio(d);
+    let x=lerp(L1[i][0],L2[i][0],e), y=lerp(L1[i][1],L2[i][1],e)-Math.sin(Math.PI*e)*(30+rnd(i+3)*70);
+    if(drop<1){const st=(L1[i][0]-X0)/(69*PITCH)*.55+rnd(i)*.12, p=clamp((drop-st)/.33); if(p<=0)continue;
+      y=lerp(y-900-rnd(i+1)*300,y,eout(p)); }
+    g.globalAlpha=alpha*(h>0?1:dimRest);
+    g.fillStyle=h>0?mix(C.dot,gp===1?C.red:C.gold,h):C.dot;g.beginPath();g.arc(x,y,R+(h>0?.9*h:0),0,7);g.fill();
+    if(i===YOU){yx=x;yy=y}
+  }
+  g.globalAlpha=1;
+  if(youA>0){const ey=eio(clamp((m-rnd(YOU+7)*.28)/.72)), sc=Math.round(lerp(DATA.t1[YOU],DATA.t2[YOU],ey)), py=yy-272;   // 牌子上写这个孩子这次的分数
+    g.save();g.globalAlpha=youA*alpha;g.strokeStyle=C.white;g.lineWidth=4;g.beginPath();g.arc(yx,yy,14,0,7);g.stroke();
+    g.beginPath();g.moveTo(yx,yy-16);g.lineTo(yx,py+30);g.lineWidth=3;g.stroke();g.restore();
+    pill(yx,py,196,64,16,C.white,youA*alpha);text('你 '+sc+' 分',yx,py+2,38,{w:900,color:'#11141c',a:youA*alpha})}
+}
+function stage(label,t,a,b){ const al=fade(t,a,b,.3,.3); if(al<=0)return; const y=350-(1-eout(seg(t,a,a+.4)))*30;
+  pill(W/2,y,360,84,42,'rgba(255,255,255,.10)',al,'rgba(255,255,255,.25)'); text(label,W/2,y+2,44,{w:700,a:al}) }
+// 两头各一块：上面一行“最差的 100 个”，第二次考完以后下面跳出“84 个 / 进步了”
+function group(side,t,out){
+  const t0=side===1?T.red:T.gold,p=seg(t,t0,t0+.3); if(p<=0)return;
+  const col=side===1?C.red:C.gold,mv=eio(seg(t,T.t2,T.t2+.8));
+  const bx=side===1?250:810, x=lerp(side===1?sx(45.5):sx(92.5),bx,mv), y=lerp(BASE-385,470,mv);
+  const other=side===1?seg(t,T.c2-.1,T.c2+.3):seg(t,T.c1-.1,T.c1+.3)*(1-seg(t,T.c2-.1,T.c2+.3)), a=out*lerp(1,.4,other);
+  g.save();g.translate(x,y);g.scale(back(p),back(p));text(side===1?'最差的 100 个':'最好的 100 个',0,0,42,{w:900,color:col,a,stroke:8});g.restore();
+  const c0=side===1?T.c1:T.c2; if(t<c0)return;
+  const n=side===1?S.bot_up:S.top_down, v=Math.round(n*eout(seg(t,c0,c0+.8))), pop=back(seg(t,c0,c0+.35));
+  g.save();g.translate(bx,585);g.scale(.8+.2*pop,.8+.2*pop);rich([[String(v),col],[' 个',col]],0,0,112,{w:900,a,stroke:12});g.restore();
+  text(side===1?'进步了':'退步了',bx,692,68,{w:900,a:a*seg(t,c0+.2,c0+.5),stroke:10});
+}
+
+// ---------- 一个孩子的七次考试（示意） ----------
+function chart(t,a){ if(a<=0)return; const x0=150,x1=850,yTop=600,yBot=1140;
+  const py=s=>lerp(yBot,yTop,(s-48)/(92-48)), px=k=>lerp(x0,x1,k/6), r=t-CH0;
+  g.save();g.globalAlpha=a*seg(r,0,.3);g.setLineDash([14,12]);g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=3;g.beginPath();g.moveTo(x0-70,py(ABIL));g.lineTo(x1+70,py(ABIL));g.stroke();g.restore();
+  text('实力 70',x0-74,py(ABIL)+40,36,{w:700,a:a*seg(r,0,.3),align:'left'});
+  let prev=null;
+  for(let k=0;k<7;k++){const p=seg(r,PT[k],PT[k]+.3); if(p<=0)break; const x=px(k),y=py(EX[k]),col=k===2?C.red:k===3?C.green:k===5?C.gold:C.white;
+    if(prev){g.save();g.globalAlpha=a*p*.5;g.strokeStyle=C.sub;g.lineWidth=3;g.beginPath();g.moveTo(prev[0],prev[1]);g.lineTo(lerp(prev[0],x,p),lerp(prev[1],y,p));g.stroke();g.restore()}
+    g.save();g.globalAlpha=a*p*.9;g.strokeStyle=C.luck;g.lineWidth=7;g.lineCap='round';g.beginPath();g.moveTo(x,py(ABIL));g.lineTo(x,lerp(py(ABIL),y,eout(p)));g.stroke();g.restore();   // 运气：从实力线到这次的分数
+    g.save();g.globalAlpha=a*p;g.fillStyle=col;g.beginPath();g.arc(x,y,16*back(p),0,7);g.fill();g.restore();
+    text(String(EX[k]),x+(k===2||k===5?-50:0),y+(k===2||k===5?0:EX[k]>=ABIL?-46:48),k===2||k===3||k===5?40:32,{w:900,a:a*p,color:col===C.white?C.sub:col});
+    if(k===2)text('运气差',x-14,py(ABIL)+34,28,{w:700,color:C.luck,a:a*seg(r,PT[k]+.3,PT[k]+.6),align:'right'});   // 贴在这根蓝条旁边
+    prev=[x,y]}
+  const tag=(k,s,col,tt,dy)=>{const p=seg(r,tt,tt+.3); if(p<=0)return; const x=px(k),y=py(EX[k])+dy;
+    g.save();g.translate(x,y);g.scale(back(p),back(p));pill(0,0,s.length*42+44,72,18,col,a);text(s,0,2,40,{w:900,color:'#11141c',a});g.restore()};
+  tag(2,'挨骂',C.red,TAG.scold,104); tag(3,'“骂有用”',C.white,TAG.works,-118);
+  tag(5,'被夸',C.gold,TAG.praise,-100); tag(6,'“骄傲了”',C.white,TAG.proud,112);
+  text('假如你考了七次（示意）',W/2,490,38,{w:500,color:C.sub,a:a*seg(r,0,.3)});
+}
+
+window.draw=function(frame){
+  const t=frame/FPS; bg();
+  // ---- 开头：说中 ----
+  if(t<T.pile+.1){
+    const a=1-seg(t,T.ask-.2,T.ask+.05), p2=seg(t,T.l2,T.l2+.3);
+    text('考砸了，挨一顿骂。',W/2,400,100,{w:900,a});
+    text('下次，真的进步了。',W/2,540-(1-eout(p2))*24,100,{w:900,a:a*p2});
+    paper(W/2-eout(p2)*215,870,-.07,'55','#e2372b',a,1.06-.06*eout(seg(t,0,.5)));
+    if(p2>0)paper(W/2+215,870+(1-eout(p2))*60,.06,'71','#1f9d57',a*p2,back(p2));
+    const p3=seg(t,T.bub,T.bub+.3), up=eio(seg(t,T.ask,T.ask+.4)), ob=1-seg(t,T.pile-.25,T.pile);
+    if(p3>0)bubble(lerp(1240,620,up),ob,back(p3));
+    const pq=seg(t,T.ask+.15,T.ask+.45); if(pq>0){g.save();g.translate(W/2,900);g.scale(back(pq),back(pq));text('真的吗？',0,0,180,{w:900,a:ob});g.restore()}
+  }
+  // ---- 一千个孩子，两次考试 ----
+  if(t>=T.pile&&t<T.why+.5){
+    const out=1-seg(t,T.why,T.why+.5), drop=seg(t,T.pile,T.pile+2.0), m=seg(t,T.t2,T.t2+1.5);
+    const red=seg(t,T.red,T.red+.4)*(1-.55*seg(t,T.c2-.1,T.c2+.3));
+    const gold=seg(t,T.gold,T.gold+.4)*(1-.55*seg(t,T.c1-.1,T.c1+.3)*(1-seg(t,T.c2-.1,T.c2+.3)));
+    axis(seg(t,T.pile+.2,T.pile+.8)*out);
+    dots(m,{1:red,2:gold},drop,out,seg(t,T.you,T.you+.3),seg(t,T.t2+.1,T.t2+.5)*(1-seg(t,T.c1+.4,T.c1+1.2)));
+    const a0=fade(t,T.pile,T.t1,.3,.3);
+    rich([['我用代码造了 ',C.white],['1000',C.gold],[' 个孩子',C.white]],W/2,380,74,{w:900,a:a0});
+    text('让他们考两次试',W/2,486,74,{w:900,a:a0});
+    sub('中间谁也不骂，谁也不夸',fade(t,T.pile+.9,T.t1,.3,.3));
+    stage('第一次考试',t,T.t1,T.t2-.05);
+    stage('第二次考试',t,T.t2,T.why);
+    group(1,t,out); group(2,t,out);
+    subRich([['可',C.white],['没有一个人',C.red],['骂过他们',C.white]],fade(t,T.s1,T.c2,.3,.25));
+    subRich([['也',C.white],['没有一个人',C.gold],['夸过他们',C.white]],fade(t,T.s2,T.why,.3,.25));
+  }
+  // ---- 为什么 ----
+  if(t>=T.why&&t<T.take+.4){
+    const a=fade(t,T.why+.3,T.take+.3,.4,.4);
+    rich([['分数 = ',C.white],['实力',C.white],[' + ',C.sub],['那天的运气',C.luck]],W/2,400,66,{w:900,a});
+    chart(t,a);
+    sub('考得最差那次，多半运气也最差',fade(t,CH0+1.1,CH0+3.5,.3,.25),1400,56);
+    sub('运气很少连着差两次',fade(t,CH0+3.5,CH0+5.7,.3,.25),1400,56);
+    sub('好运气，也很少连着来',fade(t,CH0+5.7,T.take+.2,.3,.25),1400,56);
+  }
+  // ---- 带走的两句 ----
+  if(t>=T.take&&t<T.q+.3){
+    const a=fade(t,T.take+.2,T.q+.2,.4,.35), p=seg(t,T.take+.3,T.take+.7), p2=seg(t,T.take+2.0,T.take+2.4), p3=seg(t,T.take+3.6,T.take+4.0);
+    text('骂完的进步，',W/2,500-(1-eout(p))*20,96,{w:900,a:a*p});
+    rich([['很可能',C.red],['本来就会来。',C.white]],W/2,632-(1-eout(p))*20,96,{w:900,a:a*p});
+    text('夸完的退步，',W/2,840-(1-eout(p2))*20,96,{w:900,a:a*p2});
+    rich([['也',C.white],['未必',C.gold],['是骄傲了。',C.white]],W/2,972-(1-eout(p2))*20,96,{w:900,a:a*p2});
+    text('那顿骂，也许白挨了。',W/2,1170,64,{w:700,color:C.sub,a:a*p3});
+    const fa=a*seg(t,T.take+.9,T.take+1.3);
+    text('这是简化模型：实力不变，只有运气在变。',W/2,1336,31,{w:500,color:'#c5cbd8',a:fa});
+    text('它不说明骂没用，只说明“骂完进步”证明不了骂有用。',W/2,1386,31,{w:500,color:'#c5cbd8',a:fa});
+  }
+  // ---- 最后的问题 ----
+  if(t>=T.q){
+    const a=seg(t,T.q+.2,T.q+.6);
+    text('你小时候考砸了，',W/2,600,92,{w:900,a});
+    text('等来的是骂，还是抱？',W/2,738,92,{w:900,a});
+    const o1=seg(t,T.q+1.2,T.q+1.5),o2=seg(t,T.q+1.6,T.q+1.9);
+    const opt=(x,s,col,p)=>{ if(p<=0)return; g.save();g.translate(x,1020);g.scale(back(p),back(p));pill(0,0,300,170,36,col,a);text(s,0,4,100,{w:900,color:'#11141c',a});g.restore()};
+    opt(W/2-190,'骂',C.red,o1); opt(W/2+190,'抱',C.gold,o2);
+    text('评论区说说',W/2,1225,42,{w:500,color:C.sub,a:a*seg(t,T.q+2.3,T.q+2.7)});
+  }
+};
+
+// 封面（单独一张，不在片子里）
+window.drawCover=function(){
+  bg();
+  rich([['骂完',C.red],['就进步，',C.white]],W/2,470,132,{w:900});
+  text('是骂有用吗？',W/2,640,132,{w:900});
+  rich([['我用代码让 ',C.white],['1000',C.gold],[' 个孩子考了两次试',C.white]],W/2,810,54,{w:700});
+  g.save();g.translate(0,330);axis(1);dots(0,{1:1,2:1},1,1,1,0);g.restore();
+};
+
+window.ready=(async()=>{
+  DATA=await (await fetch('sim/result.json')).json(); YOU=DATA.you; S=DATA.summary; L1=layout(DATA.t1); L2=layout(DATA.t2);
+  const all=document.documentElement.innerHTML;
+  for(const w of [400,500,700,900]) await document.fonts.load(`${w} 40px ${F}`,all);
+  await document.fonts.ready; return {frames:FRAMES,fps:FPS,w:W,h:H,sfx:window.SFX,T};
+})();
+</script>

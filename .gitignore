@@ -1,0 +1,6 @@
+# 出片的中间产物和依赖，随时能重出，不进库
+node_modules/
+抖音号/videos/*/out/frames/
+抖音号/videos/*/out/mix.wav
+__pycache__/
+.DS_Store
