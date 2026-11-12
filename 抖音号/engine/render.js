@@ -1,5 +1,5 @@
 // 出片：用无头浏览器逐帧截图，再交给 ffmpeg。
-// 用法：node render.js <scene.html> <输出目录> [--stills 0,30,90] [--scale 0.5] [--range 240,540] [--cover 封面.png]
+// 用法：node render.js <scene.html> <输出目录> [--stills 0,30,90] [--scale 0.5] [--range 240,540] [--cover 封面.png [--cover-fn drawCover43 --size 1440x1080]]
 // scene.html 要提供 window.ready（Promise，返回 {frames,fps,w,h,sfx}）和 window.draw(frame)。
 const {chromium} = require('playwright');
 const path = require('path'), fs = require('fs'), http = require('http');
@@ -20,12 +20,13 @@ const path = require('path'), fs = require('fs'), http = require('http');
   fs.mkdirSync(outDir, {recursive: true});
   const browser = await chromium.launch();
   const open = async () => {
-    const p = await browser.newPage({viewport: {width: 1080, height: 1920}, deviceScaleFactor: scale});
+    const [vw, vh] = (arg('--size') || '1080x1920').split('x').map(Number);   // 页面大小，默认竖屏
+    const p = await browser.newPage({viewport: {width: vw, height: vh}, deviceScaleFactor: scale});
     p.on('pageerror', e => { console.error('PAGE ERROR', e.message); process.exitCode = 1; });
     await p.goto(url); const meta = await p.evaluate(() => window.ready); return [p, meta];
   };
   if (arg('--cover')) {   // 单独出一张封面：页面要提供 window.drawCover()
-    const [p] = await open(); await p.evaluate(() => window.drawCover()); await p.screenshot({path: arg('--cover')});
+    const [p] = await open(); await p.evaluate(fn => window[fn](), arg('--cover-fn') || 'drawCover'); await p.screenshot({path: arg('--cover')});
   } else if (stills) {
     const [p, meta] = await open();
     for (const f of stills.split(',').map(Number)) { await p.evaluate(n => window.draw(n), f); await p.screenshot({path: path.join(outDir, `still_${String(f).padStart(5, '0')}.png`)}); }

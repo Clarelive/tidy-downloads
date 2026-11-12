@@ -220,6 +220,19 @@ window.drawCover=function(){
   g.save();g.translate(0,330);axis(1);dots(0,{1:1,2:1},1,1,1,0);g.restore();
 };
 
+// 横封面 4:3（1440×1080），抖音网页端“设置封面”里的横封面用
+window.drawCover43=function(){
+  cv.width=1440;cv.height=1080;
+  g.fillStyle=C.bg;g.fillRect(0,0,1440,1080);
+  const gr=g.createRadialGradient(720,-80,40,720,300,1100);
+  gr.addColorStop(0,'rgba(255,214,150,.20)');gr.addColorStop(.45,'rgba(120,110,140,.07)');gr.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=gr;g.fillRect(0,0,1440,1080);
+  pill(98,80,132,44,10,'rgba(255,255,255,.10)');text('AI 生成',98,81,24,{w:500,color:'rgba(255,255,255,.78)'});
+  rich([['骂完',C.red],['就进步，是骂有用吗？',C.white]],720,190,104,{w:900});
+  rich([['我用代码让 ',C.white],['1000',C.gold],[' 个孩子考了两次试',C.white]],720,312,52,{w:700});
+  g.save();g.translate((1440-(sx(101)+X0))/2,-230);axis(1);dots(0,{1:1,2:1},1,1,1,0);g.restore();
+};
+
 window.ready=(async()=>{
   DATA=await (await fetch('sim/result.json')).json(); YOU=DATA.you; S=DATA.summary; L1=layout(DATA.t1); L2=layout(DATA.t2);
   const all=document.documentElement.innerHTML;
