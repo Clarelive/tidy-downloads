@@ -1,7 +1,7 @@
 import sys, time, shutil, json, subprocess, urllib.request
 from gradio_client import Client
-D='/tmp/claude-0/-home-user-tidy-downloads/5b8e0723-be2f-5585-8027-4e81ff0cfe66/scratchpad/i2v_dl'
-O='/home/user/tidy-downloads/ltx_clips'
+D='.'  # folder containing portrait.png (copy input_portrait_704x1216.png to portrait.png)
+O='.'
 STYLE='cute fluffy blue baby finless porpoise mascot, 3D Pixar style, soft warm lighting, old brick street with steaming breakfast stall in background, static camera'
 A={'C2':'the porpoise is suddenly startled by a loud shout, jumps back, eyes wide open in shock, body trembling, sweat drop on forehead',
 'C3':'the porpoise bows repeatedly and nervously apologizing, flippers pressed together, sweating',
